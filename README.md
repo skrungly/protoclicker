@@ -24,9 +24,10 @@ snap off their pins entirely.
 
 ### software
 
-- adafruit circuitpython loaded on the pi pico (i used version 8.2.9)
+- adafruit circuitpython 9.1.0 or newer loaded on the pico
 - the following libraries from the [adafruit bundle](https://github.com/adafruit/Adafruit_CircuitPython_Bundle):
   * adafruit_hid
+  * colorsys
   * neopixel
 
 when cloning this repository, ensure that `code.py` is located at the root of the

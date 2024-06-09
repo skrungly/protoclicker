@@ -1,9 +1,11 @@
 import board
+import collections
 import keypad
 import math
 import time
 import usb_hid
 
+import colorsys
 import neopixel
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
@@ -27,10 +29,26 @@ N_KEYS = len(KEY_PINS)
 
 COLOUR_OFF = (63, 63, 63)
 
-# as the keys are held, their colour should fade.
-COLOUR_PRESS = (63, 255, 0)
-COLOUR_HOLD = (0, 63, 255)
+# as the keys are pressed with varying intensity, their
+# colour/hue should vary to indicate it
+HUE_SLOW = 0.40
+HUE_FAST = 0.05
+HUE_STEPS = 16
 
+INTENSITY_COLOURS = [
+    colorsys.hsv_to_rgb(
+        HUE_SLOW + step * (HUE_FAST - HUE_SLOW) / (HUE_STEPS - 1),
+        1.0,
+        1.0,
+    ) for step in range(HUE_STEPS)
+]
+
+# how many recent key presses to indicate intensity
+RECENT_PRESS_COUNT = 4
+INTENSE_KPS = 8
+
+# as the keys are held, their colour should fade.
+COLOUR_HOLD = (0, 63, 255)
 FADE_STEPS = 16
 FADE_STEP_INTERVAL_NS = (2 * 10 ** 9) // FADE_STEPS  # total 2 seconds
 
@@ -38,10 +56,12 @@ COLOUR_MATRIX = [
     # generate a gradient between the key press colour and
     # the final hold colour, using linear interpolation
     # across the space of RGB colours.
-    tuple(int(COLOUR_PRESS[i] + step * (
-        COLOUR_HOLD[i] - COLOUR_PRESS[i]
-    ) / (FADE_STEPS - 1)) for i in range(3))  # r, g, b
-    for step in range(FADE_STEPS)
+    [
+        tuple(int(press_colour[i] + step * (
+            COLOUR_HOLD[i] - press_colour[i]
+        ) / (FADE_STEPS - 1)) for i in range(3))  # r, g, b
+        for step in range(FADE_STEPS)
+    ] for press_colour in INTENSITY_COLOURS
 ]
 
 # list of integer gamma-correction values for accurate neopixel colours
@@ -60,8 +80,27 @@ neopixels.fill(COLOUR_OFF)
 keys = keypad.Keys(KEY_PINS, value_when_pressed=True, pull=True)
 keyboard = Keyboard(usb_hid.devices)
 
-keys_pressed = [None] * N_KEYS
+# use deques to keep track of recent press times
+keys_intensity = [0] * N_KEYS
+recent_presses = tuple(
+    collections.deque((), RECENT_PRESS_COUNT) for _ in range(N_KEYS)
+)
+
+keys_held_since = [None] * N_KEYS
 key_colours = [COLOUR_OFF] * N_KEYS
+
+
+def calculate_intensity_step(key_presses, time_now):
+    if not key_presses:
+        key_presses.append(time_now)
+        return 0  # first press, not enough info yet
+
+    avg_ns_per_key = (time_now - key_presses[0]) // len(key_presses)
+    intensity_step = (HUE_STEPS * 10 ** 9) // (avg_ns_per_key * INTENSE_KPS)
+
+    key_presses.append(time_now)
+    return intensity_step
+
 
 # now begins the event loop
 while True:
@@ -74,21 +113,29 @@ while True:
 
         if event.pressed:
             keyboard.press(KEY_VALUES[key])
-            keys_pressed[key] = time_now
-            # the colour for pressed keys is handled below
+            keys_held_since[key] = time_now
+            keys_intensity[key] = calculate_intensity_step(
+                recent_presses[key], time_now
+            )
 
         if event.released:
             keyboard.release(KEY_VALUES[key])
-            keys_pressed[key] = None
+            keys_held_since[key] = None
+
+            # there isn't any special colour behaviour for
+            # released keys, so that can just be set now.
             neopixels[key] = COLOUR_OFF
             write_pixels = True
 
-    for key, held_since in enumerate(keys_pressed):
+    for key, held_since in enumerate(keys_held_since):
         if not held_since:
             continue
 
         current_fade_step = (time_now - held_since) // FADE_STEP_INTERVAL_NS
-        current_colour = COLOUR_MATRIX[min(FADE_STEPS - 1, current_fade_step)]
+        fade_index = min(FADE_STEPS - 1, current_fade_step)
+        intensity_index = min(HUE_STEPS - 1, keys_intensity[key])
+
+        current_colour = COLOUR_MATRIX[intensity_index][fade_index]
 
         if neopixels[key] != current_colour:
             neopixels[key] = current_colour
