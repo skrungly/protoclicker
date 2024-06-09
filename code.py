@@ -53,13 +53,14 @@ INTENSITY_COLOURS = [
 ]
 
 # how many recent key presses to indicate intensity
-RECENT_PRESS_COUNT = 4
+RECENT_PRESS_COUNT = 3
 INTENSE_KPS = 10
+INTENSITY_RESET_NS = 1 * 10 ** 9
 
 # as the keys are held, their colour should fade.
 COLOUR_HOLD = gamma_corrected(colorsys.hsv_to_rgb(0.65, 0.25, 1.0))
 FADE_STEPS = 16
-FADE_STEP_INTERVAL_NS = (2 * 10 ** 9) // FADE_STEPS  # total 2 seconds
+FADE_STEP_INTERVAL_NS = int(0.5 * 10 ** 9) // FADE_STEPS
 
 COLOUR_MATRIX = [
     # generate a gradient between the key press colour and
@@ -92,6 +93,10 @@ key_colours = [COLOUR_OFF] * N_KEYS
 
 
 def calculate_intensity_step(key_presses, time_now):
+    press_reset_threshold = time_now - INTENSITY_RESET_NS
+    while key_presses and key_presses[0] < press_reset_threshold:
+        key_presses.popleft()
+
     if not key_presses:
         key_presses.append(time_now)
         return 0  # first press, not enough info yet
