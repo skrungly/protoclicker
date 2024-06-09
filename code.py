@@ -27,12 +27,21 @@ KEY_VALUES = (
 
 N_KEYS = len(KEY_PINS)
 
-COLOUR_OFF = (63, 63, 63)
+# list of integer gamma-correction values for accurate neopixel colours
+GAMMA_TABLE = [int(math.pow(i / 255, 2.8) * 255 + 0.5) for i in range(256)]
+
+
+def gamma_corrected(colour):
+    r, g, b = colour
+    return GAMMA_TABLE[r], GAMMA_TABLE[g], GAMMA_TABLE[b]
+
+
+COLOUR_OFF = gamma_corrected((63, 63, 63))
 
 # as the keys are pressed with varying intensity, their
 # colour/hue should vary to indicate it
 HUE_SLOW = 0.40
-HUE_FAST = 0.05
+HUE_FAST = 0.02
 HUE_STEPS = 16
 
 INTENSITY_COLOURS = [
@@ -45,10 +54,10 @@ INTENSITY_COLOURS = [
 
 # how many recent key presses to indicate intensity
 RECENT_PRESS_COUNT = 4
-INTENSE_KPS = 8
+INTENSE_KPS = 10
 
 # as the keys are held, their colour should fade.
-COLOUR_HOLD = (0, 63, 255)
+COLOUR_HOLD = gamma_corrected(colorsys.hsv_to_rgb(0.65, 0.25, 1.0))
 FADE_STEPS = 16
 FADE_STEP_INTERVAL_NS = (2 * 10 ** 9) // FADE_STEPS  # total 2 seconds
 
@@ -57,20 +66,12 @@ COLOUR_MATRIX = [
     # the final hold colour, using linear interpolation
     # across the space of RGB colours.
     [
-        tuple(int(press_colour[i] + step * (
+        gamma_corrected(tuple(int(press_colour[i] + step * (
             COLOUR_HOLD[i] - press_colour[i]
-        ) / (FADE_STEPS - 1)) for i in range(3))  # r, g, b
+        ) / (FADE_STEPS - 1)) for i in range(3)))  # r, g, b
         for step in range(FADE_STEPS)
     ] for press_colour in INTENSITY_COLOURS
 ]
-
-# list of integer gamma-correction values for accurate neopixel colours
-GAMMA_TABLE = [int(math.pow(i / 255, 2.8) * 255 + 0.5) for i in range(256)]
-
-
-def gamma_corrected(colour):
-    r, g, b = colour
-    return GAMMA_TABLE[r], GAMMA_TABLE[g], GAMMA_TABLE[b]
 
 
 # end of constants. set up lights and keys!
